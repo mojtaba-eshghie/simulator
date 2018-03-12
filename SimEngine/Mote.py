@@ -939,7 +939,7 @@ class Mote(object):
             if self._sixtop_cell_reservation_request(neighbor,1,dir=self.DIR_RX) == 1:
             
                 # relocate: remove old only when successfully added 
-                if nowCells < self.numCellsFromNeighbors.get(neighbor,0):
+                if nowCells < self.numCellsFromNeighbors.get(neighbor,0): 
                     if self.getTxCells():
                         neighbor._sixtop_cell_deletion_sender(self,[(ts,ch)])
                         # remember I relocated a cell
