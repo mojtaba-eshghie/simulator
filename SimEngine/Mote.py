@@ -954,6 +954,8 @@ class Mote(object):
 
             if self.engine.scheduler=='none': #OTF-sf0
                 givenCells       = neighbor._sixtop_cell_reservation_response_random(self,numCells,dir)
+            elif self.engine.scheduler=='flowp': #flow-based priority oriented scheduling
+                givenCells       = neighbor._sixtop_cell_reservation_flowp(self,numCells,dir)
             elif self.engine.scheduler=='cen': #Centralized without overlapping
                 #print "Using cen"
                 givenCells       = neighbor._sixtop_cell_reservation_response_centralized_noOverlapping(self,numCells,dir)
@@ -1040,8 +1042,74 @@ class Mote(object):
                     (len(givenCells),numCells,self.id,neighbor.id),
                 )
             return len(givenCells)
-   
-            
+
+    def _sixtop_cell_reservation_flowp(self, neighbor,numCells,dirNeighbor):
+        with self.dataLock:
+
+            # in the parent, numCells are tried to be reserved
+
+            self.numRandomSelections += 1
+
+            # set direction of cells
+            if dirNeighbor == self.DIR_TX:
+                dir = self.DIR_RX
+            else:
+                dir = self.DIR_TX
+
+            # this are all my cells
+            allCells = []
+            for x in range(0, self.settings.slotframeLength):
+                for y in range(0, self.settings.numChans):
+                    # if x==0:
+                    cell = ['0', '0']
+                    cell[0] = x
+                    cell[1] = y
+                    allCells.append(cell)
+
+            availableCells = []
+
+            for cell in allCells:
+                if not (cell[0], cell[1]) in self.schedule:
+                    if not (cell[0], cell[1]) in neighbor.schedule:
+                        availableCells.append(cell)
+            #(mojtaba)
+            selectedCells = {}
+            if len(availableCells) > 0:
+                random.shuffle(availableCells)
+
+                # if they request more cells than I have, I try to give them the maxium available
+                while len(availableCells) < numCells:
+                    numCells = numCells - 1
+
+                ranChosen = random.sample(range(0, len(availableCells)), numCells)
+
+                # these are my selected cells
+                for i in range(numCells):
+                    selectedCells[i] = availableCells[ranChosen[i]]
+
+                cellList = []
+
+                for i, val in selectedCells.iteritems():
+                    # log
+                    self._log(
+                        self.INFO,
+                        '[6top] add RX cell ts={0},ch={1} from {2} to {3}',
+                        (val[0], val[1], self.id, neighbor.id),
+                    )
+                    cellList += [(val[0], val[1], dir)]
+                self._tsch_addCells(neighbor, cellList)
+
+                # update counters
+                if dir == self.DIR_TX:
+                    if neighbor not in self.numCellsToNeighbors:
+                        self.numCellsToNeighbors[neighbor] = 0
+                    self.numCellsToNeighbors[neighbor] += len(selectedCells)
+                else:
+                    if neighbor not in self.numCellsFromNeighbors:
+                        self.numCellsFromNeighbors[neighbor] = 0
+                    self.numCellsFromNeighbors[neighbor] += len(selectedCells)
+
+            return selectedCells
 
     def _sixtop_cell_reservation_response_random(self,neighbor,numCells,dirNeighbor):
         ''' get a response from the neighbor. '''
