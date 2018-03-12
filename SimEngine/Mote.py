@@ -902,7 +902,7 @@ class Mote(object):
                         self.INFO,
                         "[6top] relocating cell ts {0} to {1} (bundle pdr {2} << theoretical pdr {3})",
                         (ts,neighbor,bundlePdr,theoPDR),
-                    )
+                    ) 
 
                     # measure how many cells I have now to that parent
                     nowCells = self.numCellsToNeighbors.get(neighbor,0)
