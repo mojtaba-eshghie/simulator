@@ -73,10 +73,28 @@ class SimEngine(threading.Thread):
         self.topology                       = Topology.Topology(self.motes)
         self.topology.createTopology()
 
+        # load flows:
+        file = open('flows.input', 'r')
+        import ast
+        string = file.readline()
+        flows_dictionary = ast.literal_eval(string)
+        s = list()
+        for key, value in flows_dictionary.items():
+            s.append(value)
+        counter = 0
+        flow_id = 0
+        for i in s:
+            for j in range(i[1]):
+                self.motes[counter].flow.update({'flow_id': flow_id, 'priority': i[0]})
+                print self.motes[counter].flow
+                counter += 1
+            flow_id += 1
+
         # boot all motes
         for i in range(len(self.motes)):
             self.motes[i].boot()
-        
+
+
         self.initTimeStampTraffic          = 0
         self.endTimeStampTraffic           = 0       
         
@@ -85,6 +103,7 @@ class SimEngine(threading.Thread):
         #print "Initialized Parent class"
         self.name                           = 'SimEngine'
         self.scheduler=self.settings.scheduler
+
         
 
 	#emunicio
@@ -131,6 +150,8 @@ class SimEngine(threading.Thread):
         ''' event driven simulator, this thread manages the events '''
         #print "Initializing parent "+ str(len(self.startCb))
         # log
+        print 'printing startCb******************************************************'
+        print self.startCb
         log.info("thread {0} starting".format(self.name))
         #print "Simulating nodes: "+str(self.settings.numMotes)
         # schedule the endOfSimulation event
@@ -221,8 +242,10 @@ class SimEngine(threading.Thread):
                 i +=1
             
             # add to schedule
-            self.events.insert(i,(asn,priority,cb,uniqueTag))           
-    
+            self.events.insert(i,(asn,priority,cb,uniqueTag))
+
+
+
     def removeEvent(self,uniqueTag,exceptCurrentASN=True):
         with self.dataLock:
             i = 0
