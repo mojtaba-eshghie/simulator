@@ -1,9 +1,8 @@
 Changes performed in the 6Tisch simulator
 ====================
 
-By:
-
-added changes by Esteban Municio <esteban.municio@uantwerpen.be>
+تغییرات نسخه جدید توسط:
+مجتبی عشقی
 
 Scope
 -----
