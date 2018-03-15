@@ -39,6 +39,13 @@ import Topology
 
 #============================ body ============================================
 
+class Metas(object):
+    """
+        in the following dict we're going to save our child:preferred_parent pairs...
+        """
+    CHILD_PARENT_PAIRS = dict()
+
+
 class Mote(object):
     
     # sufficient num. of tx to estimate pdr by ACK
@@ -94,7 +101,39 @@ class Mote(object):
     CHARGE_TxData_uC                   = 49.37
     CHARGE_RxDataTxAck_uC              = 76.90
     CHARGE_RxData_uC                   = 64.65
-    
+
+    """
+    These are the flows that are going to be used during the simulation, One can change the code to load them via argument passing later on.
+    """
+    FLOWS_INFO = [
+        {
+            'id': 'a',
+            'priority': 0.3,
+            'cells': 3, #number of cells that this flow needs to send its traffic at each transmition of data
+        },
+        {
+            'id': 'b',
+            'priority': 0.1,
+            'cells': 5,
+        },
+        {
+            'id': 'c',
+            'priority': 0.2,
+            'cells': 4,
+        },
+        {
+            'id': 'd',
+            'priority': 0.4,
+            'cells': 2,
+        },
+    ]
+
+
+
+
+
+
+
     def __init__(self,id):
         self.flow = dict()
         self.x=0
@@ -483,7 +522,7 @@ class Mote(object):
                         "[rpl] churn: preferredParent {0}->{1}",
                         (self.preferredParent.id,newPreferredParent.id),
                     )
-                
+
                 # update mote stats
                 if self.rank and newrank!=self.rank:
                     self._stats_incrementMoteStats('rplChurnRank')
@@ -548,7 +587,17 @@ class Mote(object):
             
             # per draft-ietf-6tisch-minimal, rank increase is 2*ETX*RPL_MIN_HOP_RANK_INCREASE
             return int(2*self.RPL_MIN_HOP_RANK_INCREASE*etx)
-    
+
+    def _add_pair_to_dict(self, child, parent):
+        if child in Metas.CHILD_PARENT_PAIRS.keys():
+            if Metas.CHILD_PARENT_PAIRS[child] == parent:
+                pass
+            else:
+                Metas.CHILD_PARENT_PAIRS[child] = parent
+        else:
+            Metas.CHILD_PARENT_PAIRS.update({child: parent})
+
+
     #===== otf
     
     def _otf_schedule_housekeeping(self,firstOtf=False):
@@ -947,6 +996,8 @@ class Mote(object):
         with self.dataLock:
             
             #request numCells to my parent
+            self._add_pair_to_dict(self, self.preferredParent)
+
 
             givenCells={}
             givenCells_firstRound={}
@@ -1044,76 +1095,114 @@ class Mote(object):
             return len(givenCells)
 
     def _sixtop_cell_reservation_flowp(self, neighbor,numCells,dirNeighbor):
+
         with self.dataLock:
 
-            # in the parent, numCells are tried to be reserved
+            # request numCells to my parent
+            self._add_pair_to_dict(self, self.preferredParent)
 
-            self.numRandomSelections += 1
+            givenCells = {}
+            givenCells_firstRound = {}
+            givenCells_secondRound = {}
 
-            # set direction of cells
-            if dirNeighbor == self.DIR_TX:
-                dir = self.DIR_RX
-            else:
-                dir = self.DIR_TX
+            if self.engine.scheduler == 'none':  # OTF-sf0
+                givenCells = neighbor._sixtop_cell_reservation_response_random(self, numCells, dir)
+            elif self.engine.scheduler == 'flowp':  # flow-based priority oriented scheduling
+                givenCells = neighbor._sixtop_cell_reservation_flowp(self, numCells, dir)
+            elif self.engine.scheduler == 'cen':  # Centralized without overlapping
+                # print "Using cen"
+                givenCells = neighbor._sixtop_cell_reservation_response_centralized_noOverlapping(self, numCells, dir)
+            elif self.engine.scheduler == 'opt2':  # Centralized with overlapping
+                givenCells_firstRound = neighbor._sixtop_cell_reservation_response_centralized_optimized(self, numCells,
+                                                                                                         dir)
+                if len(givenCells_firstRound) < numCells:
+                    givenCells_secondRound = neighbor._sixtop_cell_reservation_response_random(self, numCells - len(
+                        givenCells_firstRound), dir)
+            elif self.engine.scheduler == 'deBras':
+                allCells = []
+                for x in range(0, self.settings.slotframeLength):
+                    for y in range(0, self.settings.numChans):
+                        cell = ['0', '0']
+                        cell[0] = x
+                        cell[1] = y
+                        allCells.append(cell)
 
-            # this are all my cells
-            allCells = []
-            for x in range(0, self.settings.slotframeLength):
-                for y in range(0, self.settings.numChans):
-                    # if x==0:
-                    cell = ['0', '0']
-                    cell[0] = x
-                    cell[1] = y
-                    allCells.append(cell)
-
-            availableCells = []
-
-            for cell in allCells:
-                if not (cell[0], cell[1]) in self.schedule:
-                    if not (cell[0], cell[1]) in neighbor.schedule:
+                # remove my busy cells
+                availableCells = []
+                for cell in allCells:
+                    if self.schedule.has_key((cell[0], cell[1])) == False:
                         availableCells.append(cell)
-            #(mojtaba)
-            selectedCells = {}
-            if len(availableCells) > 0:
-                random.shuffle(availableCells)
 
-                # if they request more cells than I have, I try to give them the maxium available
-                while len(availableCells) < numCells:
-                    numCells = numCells - 1
+                    # remove the busy cells in my neighborhood
+                for neigh in self.scheduleNeigborhood.keys():
+                    if neigh != neighbor:
+                        for cell in self.scheduleNeigborhood[neigh]:
+                            if neigh.schedule[(cell[0], cell[1])]['dir'] != 'SHARED':
+                                if [cell[0], cell[1]] in availableCells:
+                                    if neigh.schedule[(cell[0], cell[1])]['dir'] == 'RX':
+                                        availableCells.remove([cell[0], cell[1]])
+                                    else:
+                                        if neighbor.getRSSI(neigh) + (-97 - (-105)) >= self.minRssi:
+                                            availableCells.remove([cell[0], cell[1]])
 
-                ranChosen = random.sample(range(0, len(availableCells)), numCells)
+                givenCells_firstRound = neighbor._sixtop_cell_reservation_response_deBras(self, numCells, dir,
+                                                                                          availableCells)
 
-                # these are my selected cells
-                for i in range(numCells):
-                    selectedCells[i] = availableCells[ranChosen[i]]
+                if len(givenCells_firstRound) < numCells:
+                    givenCells_secondRound = neighbor._sixtop_cell_reservation_response_random(self, numCells - len(
+                        givenCells_firstRound), dir)
+            else:
+                print
+                "Unknown scheduler"
+                assert False
 
-                cellList = []
+            i = 0
+            while i < len(givenCells_firstRound):
+                givenCells[i] = givenCells_firstRound[i]
+                i += 1
+            j = i
+            i = 0
+            while i < len(givenCells_secondRound):
+                givenCells[i + j] = givenCells_secondRound[i]
+                i += 1
 
-                for i, val in selectedCells.iteritems():
-                    # log
-                    self._log(
-                        self.INFO,
-                        '[6top] add RX cell ts={0},ch={1} from {2} to {3}',
-                        (val[0], val[1], self.id, neighbor.id),
-                    )
-                    cellList += [(val[0], val[1], dir)]
-                self._tsch_addCells(neighbor, cellList)
+            if len(givenCells) != numCells:
+                for i in range(numCells - len(givenCells)):
+                    self._stats_incrementMoteStats('cellsNotGiven')
 
-                # update counters
-                if dir == self.DIR_TX:
-                    if neighbor not in self.numCellsToNeighbors:
-                        self.numCellsToNeighbors[neighbor] = 0
-                    self.numCellsToNeighbors[neighbor] += len(selectedCells)
-                else:
-                    if neighbor not in self.numCellsFromNeighbors:
-                        self.numCellsFromNeighbors[neighbor] = 0
-                    self.numCellsFromNeighbors[neighbor] += len(selectedCells)
+            cellList = []
+            for i, val in givenCells.iteritems():
+                self._log(
+                    self.INFO,
+                    '[6top] add RX cell ts={0},ch={1} from {2} to {3}',
+                    (val[0], val[1], self.id, neighbor.id),
+                )
+                cellList += [(val[0], val[1], dir)]
 
-            return selectedCells
+            self._tsch_addCells(neighbor, cellList)
+
+            # update counters
+            if dir == self.DIR_TX:
+                if neighbor not in self.numCellsToNeighbors:
+                    self.numCellsToNeighbors[neighbor] = 0
+                self.numCellsToNeighbors[neighbor] += len(givenCells)
+            else:
+                if neighbor not in self.numCellsFromNeighbors:
+                    self.numCellsFromNeighbors[neighbor] = 0
+                self.numCellsFromNeighbors[neighbor] += len(givenCells)
+
+            if len(givenCells) != numCells:
+                # log
+                self._log(
+                    self.ERROR,
+                    '[6top] scheduled {0} cells out of {1} required between motes {2} and {3}',
+                    (len(givenCells), numCells, self.id, neighbor.id),
+                )
+            return len(givenCells)
 
     def _sixtop_cell_reservation_response_random(self,neighbor,numCells,dirNeighbor):
         ''' get a response from the neighbor. '''
-         
+
         with self.dataLock:
            
             #in the parent, numCells are tried to be reserved
@@ -1159,7 +1248,9 @@ class Mote(object):
                     selectedCells[i]=availableCells[ranChosen[i]]         
                 
                 cellList              = []
-                
+                #(mojtaba)
+                #print selectedCells
+
                 for i,val in selectedCells.iteritems():
                     # log
                     self._log(
@@ -1167,6 +1258,7 @@ class Mote(object):
                         '[6top] add RX cell ts={0},ch={1} from {2} to {3}',
                         (val[0],val[1],self.id,neighbor.id),
                     )
+                    #this is not log
                     cellList         += [(val[0],val[1],dir)]
                 self._tsch_addCells(neighbor,cellList)            
                                     
@@ -2064,7 +2156,8 @@ class Mote(object):
 
         return offset
         
-    #emunicio  
+
+    #emunicio
      
     def recalculateNumHopsToRoot(self):
         ''' calculate time offset compared to the DAGroot '''
