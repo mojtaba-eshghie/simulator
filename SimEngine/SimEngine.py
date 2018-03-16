@@ -25,8 +25,11 @@ import threading
 import Propagation
 import Topology
 import Mote
+from Mote import Metas
 import SimSettings
+import time
 import inspect
+import random
 
 #============================ defines =========================================
 
@@ -72,27 +75,21 @@ class SimEngine(threading.Thread):
         self.motes                          = [Mote.Mote(id) for id in range(self.settings.numMotes)]
         self.topology                       = Topology.Topology(self.motes)
         self.topology.createTopology()
+        self.all_nodes = self.motes
 
-        # load flows:
-        file = open('flows.input', 'r')
-        import ast
-        string = file.readline()
-        flows_dictionary = ast.literal_eval(string)
-        s = list()
-        for key, value in flows_dictionary.items():
-            s.append(value)
-        counter = 0
-        flow_id = 0
-        for i in s:
-            for j in range(i[1]):
-                self.motes[counter].flow.update({'flow_id': flow_id, 'priority': i[0]})
-                print self.motes[counter].flow
-                counter += 1
-            flow_id += 1
-
-        # boot all motes
+        # load flows into motes & boot all motes:
+        random.seed(time.time())
         for i in range(len(self.motes)):
+
+            choice = random.choice(Mote.Mote.FLOWS_INFO)
+            self.motes[i].flow.update({
+                'id':choice['id'],
+                'priority': choice['priority'],
+                'cells': choice['cells']
+            })
+            print(self.motes[i].flow)
             self.motes[i].boot()
+
 
 
         self.initTimeStampTraffic          = 0
@@ -122,9 +119,90 @@ class SimEngine(threading.Thread):
         # emunicio settings
         self.numBroadcastCell=self.settings.numBroadcastCells
         
-        
-                      
-    
+    # ===== extra functions to get things done
+    def calculate_rx_tx_sum_reverse_tree_traversal(self):
+        first_round = True
+        all_parents = [parent for parent in Metas.DODAG_PICTURE.keys()]
+        all_nodes = self.motes
+        all_leafs = list(set(all_nodes) - set(all_parents))
+
+        temp_dodag_picture = Metas.DODAG_PICTURE
+
+        while True:
+            #needs a review of each round
+            if not temp_dodag_picture:
+                break
+
+            for leaf in all_leafs:
+                if first_round:
+                    #these are the first rounders!, the real leaves of original dodag
+                    self.motes[leaf].rx_flows_sum = 0
+                    self.motes[leaf].tx_flows_sum = self.motes[leaf].flow['cells']
+                    first_round = False
+
+                    #now delete the leaves from dodag picture
+                    for leaf in all_leafs:
+                        if leaf in temp_dodag_picture.keys():
+                            del temp_dodag_picture[leaf]
+
+                    for node, kids in temp_dodag_picture:
+                        if leaf in kids:
+                            del kids[kids.index(leaf)]
+                else:
+                    for kid in Metas.DODAG_PICTURE[leaf]:
+                        self.motes[leaf].rx_flows_sum = self.motes[leaf].rx_flows_sum + self.motes[kid].flow['cells']
+                    self.motes[leaf].tx_flows_sum = self.motes[leaf].tx_flows_sum + self.motes[leaf].rx_flows_sum
+
+                    #now delete the leaves from dodag picture
+                    for leaf in all_leafs:
+                        if leaf in temp_dodag_picture.keys():
+                            del temp_dodag_picture[leaf]
+
+                    for node, kids in temp_dodag_picture:
+                        if leaf in kids:
+                            del kids[kids.index(leaf)]
+
+
+            all_nodes = [parent for parent in temp_dodag_picture.keys()]
+            for key, value in temp_dodag_picture.items():
+                for val in value:
+                    if val in all_nodes:
+                        continue
+                    else:
+                        all_nodes.append(val)
+            all_parents = [parent for parent in temp_dodag_picture.keys()]
+            all_leafs = list(set(all_nodes) - set(all_parents))
+
+
+
+
+            #delete leafs completely
+
+
+    def calculate_rx_tx_sum(self):
+        temp_dodag_picture = Metas.DODAG_PICTURE
+        for parent, kids in temp_dodag_picture.items():
+            #kids is a list containing the direct predecessor of a node
+            self.motes[parent].rx_flows_sum = 0
+            self.motes[parent].tx_flows_sum = self.motes[parent].flow['cells']
+            for kid in kids:
+                #kid is the desired child id (self.motes[id].....)
+                #motes[id].flow is usable, keys are "id", "priority", "cells"
+                self.motes[parent].rx_flows_sum = self.motes[parent].rx_flows_sum + self.motes[kid].flow['cells']
+            self.motes[parent].tx_flows_sum = self.motes[parent].tx_flows_sum + self.motes[parent].rx_flows_sum
+
+            all_parents = [parent for parent in Metas.DODAG_PICTURE.keys()]
+            all_nodes = [node.id for node in self.motes]
+            all_leafs = list(set(all_nodes) - set(all_parents))
+            for leaf in all_leafs:
+                self.motes[leaf].rx_flows_sum = 0
+                self.motes[leaf].tx_flows_sum = self.motes[leaf].flow['cells']
+            self.motes[0].tx_flows_sum = 0
+
+    def newfunction(self):
+        print self.motes
+
+
     def destroy(self):
         
         print "Drops by collision "+str(self.dropByCollision)
@@ -133,11 +211,19 @@ class SimEngine(threading.Thread):
         print "Broadcast sent "+str(self.bcstTransmitted)
         if self.bcstTransmitted!=0: #avoiding zero division
             print "Broadcast PER "+str(float(self.bcstReceived)/self.bcstTransmitted)
-        
+        print Mote.Metas.CHILD_PARENT_PAIRS
         print "TX total "+str(self.totalTx)
         print "RX total "+str(self.totalRx)
         print "PER "+str(float(self.totalRx)/self.totalTx)
-
+        print "some simulation results:"
+        for i in range(self.motes.__len__()):
+            print 'for node {0}'.format(str(i))
+            print str(self.motes[i].flow)
+            print('the sum of tx flows is {0}'.format(self.motes[i].tx_flows_sum))
+            print('the sum of rx flows is {0}'.format(self.motes[i].rx_flows_sum))
+            print('***********************')
+            print('::::::::::::this is the tree structure:::::::::::')
+            print(Metas.DODAG_PICTURE)
         self.propagation.destroy()
         
         # destroy my own instance
@@ -150,7 +236,7 @@ class SimEngine(threading.Thread):
         ''' event driven simulator, this thread manages the events '''
         #print "Initializing parent "+ str(len(self.startCb))
         # log
-        print 'printing startCb******************************************************'
+
         print self.startCb
         log.info("thread {0} starting".format(self.name))
         #print "Simulating nodes: "+str(self.settings.numMotes)
@@ -242,6 +328,11 @@ class SimEngine(threading.Thread):
                 i +=1
             
             # add to schedule
+            #self.calculate_rx_tx_sum()
+            #self.calculate_rx_tx_sum_reverse_tree_traversal()
+            self.newfunction()
+
+
             self.events.insert(i,(asn,priority,cb,uniqueTag))
 
 

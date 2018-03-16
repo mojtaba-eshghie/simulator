@@ -22,6 +22,7 @@ log.addHandler(NullHandler())
 
 import random
 import math
+import time
 
 import SimSettings
 
@@ -75,6 +76,7 @@ class Topology(object):
         # reposition each mote until it is connected
         connectedMotes = [dagRoot]
         for mote in self.motes:
+
             if mote in connectedMotes:
                 continue
             connected = False

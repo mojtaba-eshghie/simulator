@@ -297,13 +297,10 @@ def runSims(options):
             
             # start simulation run
             simengine.start()
-            print simengine.events
-            print simengine.events.__len__()
+
             # wait for simulation run to end
             simengine.join()
-            print '-----------------------------------------------------------------------------------'
-            print simengine.events
-            print simengine.events.__len__()
+
 
             # destroy singletons
             simstats.destroy()
