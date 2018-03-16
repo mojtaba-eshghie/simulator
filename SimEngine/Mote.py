@@ -294,6 +294,7 @@ class Mote(object):
         create an event that is inserted into the simulator engine to send the data according to the traffic
         '''  
         with self.dataLock:
+
             if not self.finishMyFlow:
                 if not firstPacket:
                     # compute random delay
@@ -306,7 +307,8 @@ class Mote(object):
                 assert delay>0   
                               
                 if (self.engine.asn < (96*self.settings.slotframeLength)):  #cycle 96
-                    self.draw_dodag_logically()
+
+
 
                     # schedule
                     self.engine.scheduleIn(
@@ -396,6 +398,7 @@ class Mote(object):
     def _rpl_schedule_sendDIO(self,firstDIO=False):
         
         with self.dataLock:
+
 
             asn    = self.engine.getAsn()
             ts     = asn%self.settings.slotframeLength
@@ -616,7 +619,7 @@ class Mote(object):
     def _rpl_calcRankIncrease(self, neighbor):
         
         with self.dataLock:
-                                    
+
             # estimate the ETX to that neighbor
             etx = self._estimateETX(neighbor)
                  
@@ -1136,6 +1139,8 @@ class Mote(object):
     def _sixtop_cell_reservation_flowp(self, neighbor,numCells,dirNeighbor):
 
         with self.dataLock:
+            self.draw_dodag_logically()
+            print Metas.DODAG_PICTURE
 
             # in the parent, numCells are tried to be reserved
 

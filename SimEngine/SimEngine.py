@@ -30,6 +30,7 @@ import SimSettings
 import time
 import inspect
 import random
+import copy
 
 #============================ defines =========================================
 
@@ -87,7 +88,6 @@ class SimEngine(threading.Thread):
                 'priority': choice['priority'],
                 'cells': choice['cells']
             })
-            print(self.motes[i].flow)
             self.motes[i].boot()
 
 
@@ -120,68 +120,58 @@ class SimEngine(threading.Thread):
         self.numBroadcastCell=self.settings.numBroadcastCells
         
     # ===== extra functions to get things done
-    def calculate_rx_tx_sum_reverse_tree_traversal(self):
-        first_round = True
-        all_parents = [parent for parent in Metas.DODAG_PICTURE.keys()]
-        all_nodes = self.motes
-        all_leafs = list(set(all_nodes) - set(all_parents))
 
-        temp_dodag_picture = Metas.DODAG_PICTURE
+    def find_leaves(self, tree):
+        tree_picture = copy.deepcopy(tree)
+        preds = []
+        for key, value in tree_picture.items():
+            preds += [pred for pred in value]
+        if not preds:
+            return None, None
 
-        while True:
-            #needs a review of each round
-            if not temp_dodag_picture:
-                break
+        for pred in preds:
+            if pred in tree_picture.keys():
+                del preds[preds.index(pred)]
 
-            for leaf in all_leafs:
-                if first_round:
-                    #these are the first rounders!, the real leaves of original dodag
-                    self.motes[leaf].rx_flows_sum = 0
-                    self.motes[leaf].tx_flows_sum = self.motes[leaf].flow['cells']
-                    first_round = False
+            for key in tree_picture.keys():
+                if pred in tree_picture[key]:
+                    del tree_picture[key][tree_picture[key].index(pred)]
+        return preds, tree_picture
 
-                    #now delete the leaves from dodag picture
-                    for leaf in all_leafs:
-                        if leaf in temp_dodag_picture.keys():
-                            del temp_dodag_picture[leaf]
 
-                    for node, kids in temp_dodag_picture:
-                        if leaf in kids:
-                            del kids[kids.index(leaf)]
+    def rx_tx_calc(self):
+        if Metas.DODAG_PICTURE:
+            tree_picture = Metas.DODAG_PICTURE
+            while True:
+                if not tree_picture:
+                    break
                 else:
-                    for kid in Metas.DODAG_PICTURE[leaf]:
-                        self.motes[leaf].rx_flows_sum = self.motes[leaf].rx_flows_sum + self.motes[kid].flow['cells']
-                    self.motes[leaf].tx_flows_sum = self.motes[leaf].tx_flows_sum + self.motes[leaf].rx_flows_sum
-
-                    #now delete the leaves from dodag picture
-                    for leaf in all_leafs:
-                        if leaf in temp_dodag_picture.keys():
-                            del temp_dodag_picture[leaf]
-
-                    for node, kids in temp_dodag_picture:
-                        if leaf in kids:
-                            del kids[kids.index(leaf)]
-
-
-            all_nodes = [parent for parent in temp_dodag_picture.keys()]
-            for key, value in temp_dodag_picture.items():
-                for val in value:
-                    if val in all_nodes:
-                        continue
+                    leaves, tree_picture = self.find_leaves(tree_picture)
+                    if (not leaves) or (not tree_picture):
+                        print 'smt is none here....'
                     else:
-                        all_nodes.append(val)
-            all_parents = [parent for parent in temp_dodag_picture.keys()]
-            all_leafs = list(set(all_nodes) - set(all_parents))
+                        for leaf in leaves:
+                            try:
+                                kids = Metas.DODAG_PICTURE[leaf]
+                                # then this node is a leaf on this iteration of the algorithm
+                                for kid in kids:
+                                    self.motes[leaf].rx_flows_sum += self.motes[kid].flow['cells']
+                                    self.motes[leaf].tx_flows_sum = self.motes[leaf].flow['cells'] + self.motes[
+                                        leaf].rx_flows_sum
+                            except:
+                                self.motes[leaf].tx_flows_sum = self.motes[leaf].flow['cells']
+                                self.motes[leaf].rx_flows_sum = 0
+
+                    print tree_picture
 
 
 
-
-            #delete leafs completely
-
-
+'''
     def calculate_rx_tx_sum(self):
+
         temp_dodag_picture = Metas.DODAG_PICTURE
         for parent, kids in temp_dodag_picture.items():
+
             #kids is a list containing the direct predecessor of a node
             self.motes[parent].rx_flows_sum = 0
             self.motes[parent].tx_flows_sum = self.motes[parent].flow['cells']
@@ -198,9 +188,8 @@ class SimEngine(threading.Thread):
                 self.motes[leaf].rx_flows_sum = 0
                 self.motes[leaf].tx_flows_sum = self.motes[leaf].flow['cells']
             self.motes[0].tx_flows_sum = 0
+'''
 
-    def newfunction(self):
-        print self.motes
 
 
     def destroy(self):
@@ -330,7 +319,8 @@ class SimEngine(threading.Thread):
             # add to schedule
             #self.calculate_rx_tx_sum()
             #self.calculate_rx_tx_sum_reverse_tree_traversal()
-            self.newfunction()
+            self.rx_tx_calc()
+
 
 
             self.events.insert(i,(asn,priority,cb,uniqueTag))
