@@ -31,7 +31,6 @@ import time
 import inspect
 import random
 import copy
-
 #============================ defines =========================================
 
 #============================ body ============================================
@@ -76,7 +75,7 @@ class SimEngine(threading.Thread):
         self.motes                          = [Mote.Mote(id) for id in range(self.settings.numMotes)]
         self.topology                       = Topology.Topology(self.motes)
         self.topology.createTopology()
-        self.all_nodes = self.motes
+
 
         # load flows into motes & boot all motes:
         random.seed(time.time())
@@ -88,6 +87,7 @@ class SimEngine(threading.Thread):
                 'priority': choice['priority'],
                 'cells': choice['cells']
             })
+            print(self.motes[i].flow)
             self.motes[i].boot()
 
 
@@ -121,74 +121,109 @@ class SimEngine(threading.Thread):
         
     # ===== extra functions to get things done
 
-    def find_leaves(self, tree):
-        tree_picture = copy.deepcopy(tree)
-        preds = []
-        for key, value in tree_picture.items():
-            preds += [pred for pred in value]
-        if not preds:
-            return None, None
 
-        for pred in preds:
-            if pred in tree_picture.keys():
-                del preds[preds.index(pred)]
-
-            for key in tree_picture.keys():
-                if pred in tree_picture[key]:
-                    del tree_picture[key][tree_picture[key].index(pred)]
-        return preds, tree_picture
-
-
-    def rx_tx_calc(self):
+    def calculate_max_depth(self):
         if Metas.DODAG_PICTURE:
-            tree_picture = Metas.DODAG_PICTURE
-            while True:
-                if not tree_picture:
-                    break
+            Metas.MAX_DEPTH = 0
+            first_level = Metas.DODAG_PICTURE[0]
+            for mote in first_level:
+                while self.motes[mote].node.left_most_child:
+                    Metas.MAX_DEPTH += 1
+                    mote = self.motes[mote].node.left_most_child
+
+
+    def calc_rx_tx_sum_reverse(self):
+        if Metas.DODAG_PICTURE:
+            for mote in self.motes:
+                mote.tx_flows_sum = 0
+                mote.rx_flows_sum = 0
+            #firstly lets deepcopy each node object into another object
+            this_iterate_leaves = set()
+            for mote in self.motes:
+                if mote.node.left_most_child is None:
+                    #then this mote is a leaf and we want it,
+                    #we need to find its parent, and right-childs
+                    parent = mote.node.parent
+                    kids = Metas.DODAG_PICTURE[parent]
+                    #now we need to do the shit to this parent's kids
+                    if kids:
+                        #kids list is not empty,
+                        for kid in kids:
+                            if not self.motes[kid].tx_flows_sum:
+                                self.motes[kid].tx_flows_sum = self.motes[kid].flow['cells']
+                            #find the parent's tx_flows_sum and rx_flows_sum
+                            self.motes[parent].rx_flows_sum += self.motes[kid].flow['cells']
+                            #remove the kid we have been doing so to.
+                        self.motes[parent].tx_flows_sum = self.motes[parent].rx_flows_sum + self.motes[parent].flow['cells']
+
+                        this_iterate_leaves.add(parent)
+            #print this_iterate_leaves
+
+            for i in range(Metas.MAX_DEPTH):
+                #print 'this iteration leaves:'
+                #print this_iterate_leaves
+                temp_leaves = copy.deepcopy(this_iterate_leaves)
+                this_iterate_leaves = set()
+                for mote in temp_leaves:
+                    if self.motes[mote].node.left_most_child is None:
+                        # then this mote is a leaf and we want it,
+                        # we need to find its parent, and right-childs
+                        parent = mote.node.parent
+                        kids = Metas.DODAG_PICTURE[parent]
+                        # now we need to do the shit to this parent's kids
+                        if kids:
+                            # kids list is not empty,
+                            for kid in kids:
+                                if not self.motes[kid].tx_flows_sum:
+                                    self.motes[kid].tx_flows_sum = self.motes[kid].flow['cells']
+                                # find the parent's tx_flows_sum and rx_flows_sum
+                                self.motes[parent].rx_flows_sum += self.motes[kid].flow['cells']
+                                # remove the kid we have been doing so to.
+                            self.motes[parent].tx_flows_sum = self.motes[parent].rx_flows_sum + self.motes[parent].flow['cells']
+                            this_iterate_leaves.add(parent)
+
+
+
+
+    def give_out_tree(self):
+        if Metas.DODAG_PICTURE:
+            for device in self.motes:
+                if device.id == 0:
+                    device.node.parent = None
+                    try:
+                        device.node.left_most_child = Metas.DODAG_PICTURE[0][0]
+                        device.node.right_sibling = None
+                    except Exception:
+                        print 'couldn\'t assign device.node.left_most_child'
                 else:
-                    leaves, tree_picture = self.find_leaves(tree_picture)
-                    if (not leaves) or (not tree_picture):
-                        print 'smt is none here....'
+                    #in case the node is not root
+                    if device.id in Metas.DODAG_PICTURE.keys():
+                        device.node.left_most_child = Metas.DODAG_PICTURE[device.id][0]
+                        #in order to find the right-sibling, we need to find the parent of this guy,
+                        #which means that we have to search inside the lists of values inside DODAG_PICTURE
+                        for p, kds in Metas.DODAG_PICTURE.items():
+                            if device.id in kds:
+                                #put the then we have found the parent which is p
+                                device.node.parent = p
+                                #now to find the right sibling of this guy,
+                                try:
+                                    device.node.right_sibling = kds[kds.index(device.id) + 1]
+                                except IndexError:
+                                    device.node.right_sibling = None
                     else:
-                        for leaf in leaves:
-                            try:
-                                kids = Metas.DODAG_PICTURE[leaf]
-                                # then this node is a leaf on this iteration of the algorithm
-                                for kid in kids:
-                                    self.motes[leaf].rx_flows_sum += self.motes[kid].flow['cells']
-                                    self.motes[leaf].tx_flows_sum = self.motes[leaf].flow['cells'] + self.motes[
-                                        leaf].rx_flows_sum
-                            except:
-                                self.motes[leaf].tx_flows_sum = self.motes[leaf].flow['cells']
-                                self.motes[leaf].rx_flows_sum = 0
+                        #in case that the device is a real leaf
+                        device.node.left_most_child = None
+                        #now to find the parent and right-sibling:
+                        for p, kds in Metas.DODAG_PICTURE.items():
+                            if device.id in kds:
+                                #then we have found the node parent,
+                                device.node.parent = p
+                                #using that parent to find the right-sibling
+                                try:
+                                    device.node.right_sibling = kds[kds.index(device.id) + 1]
+                                except IndexError:
+                                    device.node.right_sibling = None
 
-                    print tree_picture
-
-
-
-'''
-    def calculate_rx_tx_sum(self):
-
-        temp_dodag_picture = Metas.DODAG_PICTURE
-        for parent, kids in temp_dodag_picture.items():
-
-            #kids is a list containing the direct predecessor of a node
-            self.motes[parent].rx_flows_sum = 0
-            self.motes[parent].tx_flows_sum = self.motes[parent].flow['cells']
-            for kid in kids:
-                #kid is the desired child id (self.motes[id].....)
-                #motes[id].flow is usable, keys are "id", "priority", "cells"
-                self.motes[parent].rx_flows_sum = self.motes[parent].rx_flows_sum + self.motes[kid].flow['cells']
-            self.motes[parent].tx_flows_sum = self.motes[parent].tx_flows_sum + self.motes[parent].rx_flows_sum
-
-            all_parents = [parent for parent in Metas.DODAG_PICTURE.keys()]
-            all_nodes = [node.id for node in self.motes]
-            all_leafs = list(set(all_nodes) - set(all_parents))
-            for leaf in all_leafs:
-                self.motes[leaf].rx_flows_sum = 0
-                self.motes[leaf].tx_flows_sum = self.motes[leaf].flow['cells']
-            self.motes[0].tx_flows_sum = 0
-'''
 
 
 
@@ -211,8 +246,11 @@ class SimEngine(threading.Thread):
             print('the sum of tx flows is {0}'.format(self.motes[i].tx_flows_sum))
             print('the sum of rx flows is {0}'.format(self.motes[i].rx_flows_sum))
             print('***********************')
-            print('::::::::::::this is the tree structure:::::::::::')
-            print(Metas.DODAG_PICTURE)
+
+        for mote in self.motes:
+            print 'mote with id: {0}, has such node structure:{1}, with rank {2}'.format(mote.id, mote.node, mote.rank)
+
+        print('max rank is {0}'.format(Metas.MAX_DEPTH))
         self.propagation.destroy()
         
         # destroy my own instance
@@ -310,7 +348,9 @@ class SimEngine(threading.Thread):
             self.removeEvent(uniqueTag,exceptCurrentASN)
         
         with self.dataLock:
-            
+            self.give_out_tree()
+            self.calc_rx_tx_sum_reverse()
+            self.calculate_max_depth()
             # find correct index in schedule
             i = 0
             while i<len(self.events) and (self.events[i][0]<asn or (self.events[i][0]==asn and self.events[i][1]<=priority)):
@@ -318,9 +358,6 @@ class SimEngine(threading.Thread):
             
             # add to schedule
             #self.calculate_rx_tx_sum()
-            #self.calculate_rx_tx_sum_reverse_tree_traversal()
-            self.rx_tx_calc()
-
 
 
             self.events.insert(i,(asn,priority,cb,uniqueTag))

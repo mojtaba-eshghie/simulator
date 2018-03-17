@@ -42,10 +42,22 @@ import Topology
 
 class Metas(object):
     """
-        in the following dict we're going to save our child:preferred_parent pairs...
-        """
+            in the following dict we're going to save our child:preferred_parent pairs...
+    """
     CHILD_PARENT_PAIRS = dict()
     DODAG_PICTURE = dict()
+    MAX_DEPTH = 0
+
+
+class Node(object):
+    def __init__(self):
+        self.parent = None
+        self.right_sibling = None
+        self.left_most_child = None
+
+    def __str__(self):
+        return 'parent: {0}, right-sibling: {1}, left-child: {2}'.format(self.parent, self.right_sibling, self.left_most_child)
+
 
 
 class Mote(object):
@@ -141,8 +153,7 @@ class Mote(object):
         self.tx_flows_sum = 0 #this is the summation of transmit cells that this node needs
         self.rx_flows_sum = 0 #this is the summation of transmit cells that this node needs
 
-
-
+        self.node = Node()
         self.x=0
         self.y=0        
         
@@ -253,6 +264,8 @@ class Mote(object):
     #======================== stack ===========================================
 
     #===== extra functions to get things done
+
+
     def draw_dodag_logically(self):
 
         temp_child_parent_pairs = Metas.CHILD_PARENT_PAIRS
@@ -264,7 +277,6 @@ class Mote(object):
                     del temp_child_parent_pairs[child]
                 else:
                     continue
-
             else:
                 #add the new parent to Metas.DODAG_PICTURE with the proper child
                 Metas.DODAG_PICTURE.update({parent: [child,]})
@@ -1140,8 +1152,6 @@ class Mote(object):
 
         with self.dataLock:
             self.draw_dodag_logically()
-            print Metas.DODAG_PICTURE
-
             # in the parent, numCells are tried to be reserved
 
             self.numRandomSelections += 1
