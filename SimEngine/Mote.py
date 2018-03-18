@@ -54,6 +54,7 @@ class Node(object):
         self.parent = None
         self.right_sibling = None
         self.left_most_child = None
+        self.depth = None
 
     def __str__(self):
         return 'parent: {0}, right-sibling: {1}, left-child: {2}'.format(self.parent, self.right_sibling, self.left_most_child)

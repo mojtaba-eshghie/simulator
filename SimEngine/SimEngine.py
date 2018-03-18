@@ -131,6 +131,19 @@ class SimEngine(threading.Thread):
                     Metas.MAX_DEPTH += 1
                     mote = self.motes[mote].node.left_most_child
 
+    def calculate_each_depth(self):
+        if Metas.DODAG_PICTURE:
+            for mote in self.motes:
+                if mote.id == 0:
+                    self.motes[0].node.depth = 0
+                    continue
+                rank_counter = 1
+                mote_id = self.motes[mote.id].node.parent
+                while mote_id:
+                    mote_id = self.motes[mote_id].node.parent
+                    rank_counter += 1
+                self.motes[mote.id].node.depth = rank_counter
+
 
     def calc_rx_tx_sum_reverse(self):
         if Metas.DODAG_PICTURE:
@@ -151,14 +164,16 @@ class SimEngine(threading.Thread):
                         for kid in kids:
                             if not self.motes[kid].tx_flows_sum:
                                 self.motes[kid].tx_flows_sum = self.motes[kid].flow['cells']
+                                #print 'working on {0}'.format(kid)
                             #find the parent's tx_flows_sum and rx_flows_sum
                             self.motes[parent].rx_flows_sum += self.motes[kid].flow['cells']
                             #remove the kid we have been doing so to.
                         self.motes[parent].tx_flows_sum = self.motes[parent].rx_flows_sum + self.motes[parent].flow['cells']
 
                         this_iterate_leaves.add(parent)
+            this_iterate_leaves.remove(0)
             #print this_iterate_leaves
-
+            '''
             for i in range(Metas.MAX_DEPTH):
                 #print 'this iteration leaves:'
                 #print this_iterate_leaves
@@ -180,7 +195,7 @@ class SimEngine(threading.Thread):
                                 self.motes[parent].rx_flows_sum += self.motes[kid].flow['cells']
                                 # remove the kid we have been doing so to.
                             self.motes[parent].tx_flows_sum = self.motes[parent].rx_flows_sum + self.motes[parent].flow['cells']
-                            this_iterate_leaves.add(parent)
+                            this_iterate_leaves.add(parent)'''
 
 
 
@@ -225,6 +240,27 @@ class SimEngine(threading.Thread):
                                     device.node.right_sibling = None
 
 
+    def calc_rx_tx_depth(self):
+        if Metas.DODAG_PICTURE:
+            for mote in self.motes:
+                mote.tx_flows_sum = 0
+                mote.rx_flows_sum = 0
+            depth_list = [i for i in range(0, Metas.MAX_DEPTH+1)]
+            depth_list.reverse()
+            for depth in depth_list:
+                for mote in self.motes:
+                    if mote.node.depth == depth:
+                        try:
+                            kids = Metas.DODAG_PICTURE[mote.id]
+                            for kid in kids:
+                                self.motes[mote.id].rx_flows_sum += self.motes[kid].tx_flows_sum
+                            self.motes[mote.id].tx_flows_sum = self.motes[mote.id].rx_flows_sum + self.motes[mote.id].flow['cells']
+                        except KeyError:
+                            self.motes[mote.id].tx_flows_sum = self.motes[mote.id].flow['cells']
+                            self.motes[mote.id].rx_flows_sum = 0
+                    else:
+                        continue
+
 
 
     def destroy(self):
@@ -248,7 +284,7 @@ class SimEngine(threading.Thread):
             print('***********************')
 
         for mote in self.motes:
-            print 'mote with id: {0}, has such node structure:{1}, with rank {2}'.format(mote.id, mote.node, mote.rank)
+            print 'mote with id: {0}, has such node structure:{1}, depth is:{2}'.format(mote.id, mote.node, mote.node.depth)
 
         print('max rank is {0}'.format(Metas.MAX_DEPTH))
         self.propagation.destroy()
@@ -349,8 +385,9 @@ class SimEngine(threading.Thread):
         
         with self.dataLock:
             self.give_out_tree()
-            self.calc_rx_tx_sum_reverse()
+            self.calc_rx_tx_depth()
             self.calculate_max_depth()
+            self.calculate_each_depth()
             # find correct index in schedule
             i = 0
             while i<len(self.events) and (self.events[i][0]<asn or (self.events[i][0]==asn and self.events[i][1]<=priority)):
