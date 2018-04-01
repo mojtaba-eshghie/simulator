@@ -62,7 +62,7 @@ class Node(object):
 
 
 class Mote(object):
-    
+
     # sufficient num. of tx to estimate pdr by ACK
     NUM_SUFFICIENT_TX                  = 10
     # maximum number of tx for history
@@ -156,8 +156,10 @@ class Mote(object):
 
         self.node = Node()
         self.x=0
-        self.y=0        
-        
+        self.y=0
+
+        self.smoother = 0.1
+        self.power = 1.1
         
         random.seed(5)        
         
@@ -387,6 +389,7 @@ class Mote(object):
                       
             # enqueue packet in TSCH queue
             isEnqueued = self._tsch_enqueue(newPacket)
+
             
             if isEnqueued:
                 # increment traffic
@@ -635,13 +638,18 @@ class Mote(object):
 
             # estimate the ETX to that neighbor
             etx = self._estimateETX(neighbor)
-                 
+
             # return if that failed
             if not etx:
                 return
             
             # per draft-ietf-6tisch-minimal, rank increase is 2*ETX*RPL_MIN_HOP_RANK_INCREASE
-            return int(2*self.RPL_MIN_HOP_RANK_INCREASE*etx)
+
+            if self.engine.objective_function == 'OF0':
+                return int((3 * etx - 2) * self.RPL_MIN_HOP_RANK_INCREASE)
+            elif self.engine.objective_function == 'quell':
+                return int(((3 * etx - 2) * (1 - self.smoother) + (self.txQueue.__len__() ** self.power) * (self.smoother)) * self.RPL_MIN_HOP_RANK_INCREASE)
+
 
     def _add_pair_to_dict(self, child, parent):
 
@@ -1062,6 +1070,7 @@ class Mote(object):
                 givenCells       = neighbor._sixtop_cell_reservation_response_random(self,numCells,dir)
             elif self.engine.scheduler=='flowp': #flow-based priority oriented scheduling
                 givenCells       = neighbor._sixtop_cell_reservation_flowp(self,numCells,dir)
+
             elif self.engine.scheduler=='cen': #Centralized without overlapping
                 #print "Using cen"
                 givenCells       = neighbor._sixtop_cell_reservation_response_centralized_noOverlapping(self,numCells,dir)
@@ -1665,6 +1674,7 @@ class Mote(object):
             # all is good           
             # enqueue packet
             self.txQueue    += [packet]
+
 
             return True
     

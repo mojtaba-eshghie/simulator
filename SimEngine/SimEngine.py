@@ -100,6 +100,7 @@ class SimEngine(threading.Thread):
         #print "Initialized Parent class"
         self.name                           = 'SimEngine'
         self.scheduler=self.settings.scheduler
+        self.objective_function = self.settings.objective_function
 
         
 
@@ -261,6 +262,27 @@ class SimEngine(threading.Thread):
                     else:
                         continue
 
+    def plotDODAG(self):
+        import pandas as pd
+        import numpy as np
+        import networkx as nx
+        import matplotlib.pyplot as plt
+
+        # Build a dataframe with your connections
+        from_list = []
+        to_list = []
+        for child, parent in Mote.Metas.CHILD_PARENT_PAIRS.items():
+            from_list.append(parent)
+            to_list.append(child)
+
+        df = pd.DataFrame({'from': from_list, 'to': to_list})
+
+        # Build your graph
+        G = nx.from_pandas_dataframe(df, 'from', 'to')
+        # All together we can do something fancy
+        nx.draw(G, with_labels=True, node_size=1500, node_color="skyblue", node_shape="o", alpha=0.5, linewidths=4,
+                font_size=25, font_color="grey", font_weight="bold", width=2, edge_color="grey")
+        plt.show()
 
 
     def destroy(self):
@@ -271,11 +293,15 @@ class SimEngine(threading.Thread):
         print "Broadcast sent "+str(self.bcstTransmitted)
         if self.bcstTransmitted!=0: #avoiding zero division
             print "Broadcast PER "+str(float(self.bcstReceived)/self.bcstTransmitted)
-        print Mote.Metas.CHILD_PARENT_PAIRS
+
         print "TX total "+str(self.totalTx)
         print "RX total "+str(self.totalRx)
         print "PER "+str(float(self.totalRx)/self.totalTx)
-        print "some simulation results:"
+
+        # print Mote.Metas.CHILD_PARENT_PAIRS
+        #disabling plotdodag!
+        #self.plotDODAG()
+        '''
         for i in range(self.motes.__len__()):
             print 'for node {0}'.format(str(i))
             print str(self.motes[i].flow)
@@ -284,11 +310,12 @@ class SimEngine(threading.Thread):
             print('***********************')
 
         for mote in self.motes:
-            print 'mote with id: {0}, has such node structure:{1}, depth is:{2}'.format(mote.id, mote.node, mote.node.depth)
+            print 'mote with id: {0}, has such node structure:{1}, depth is:{2}, rank:{3}'.format(mote.id, mote.node, mote.node.depth, mote.rank)
 
         print('max rank is {0}'.format(Metas.MAX_DEPTH))
+        '''
         self.propagation.destroy()
-        
+
         # destroy my own instance
         self._instance                      = None
         self._init                          = False

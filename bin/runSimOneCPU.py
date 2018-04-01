@@ -238,6 +238,12 @@ def parseCliOptions():
         default    = False,
         help       = '[debug] add individual summarys per node for Throughput.',
     )
+    parser.add_argument('--objective_function',
+                        dest='objective_function',
+                        type=str,
+                        default='OF0',
+                        help='[debug] select your objective function to use.',
+                        )
 
     options        = parser.parse_args()
 
@@ -290,6 +296,7 @@ def runSims(options):
             
             # create singletons
             settings         = SimSettings.SimSettings(**simParam)
+
             settings.setStartTime(runStartTime)
             settings.setCombinationKeys(combinationKeys)
             simengine        = SimEngine.SimEngine(runNum)
@@ -309,7 +316,7 @@ def runSims(options):
         
         # print
         output  = 'simulation ended after {0:.0f}s.'.format(time.time()-simStartTime)
-        printOrLog(simParam,output)
+        #printOrLog(simParam,output)
 
 #============================ main ============================================
 

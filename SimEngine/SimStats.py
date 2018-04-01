@@ -104,7 +104,7 @@ class SimStats(object):
         if (self.engine.asn >= (96*self.settings.slotframeLength)) and self.engine.endTimeStampTraffic==0:
             self.engine.endTimeStampTraffic=self.engine.asn*self.settings.slotDuration
             self.engine.timeElapsedFlow=self.engine.endTimeStampTraffic-self.engine.initTimeStampTraffic        
-            print "Elapsed time: "+str(self.engine.timeElapsedFlow)        
+            print "Elapsed time: "+str(self.engine.timeElapsedFlow)
         
         # write statistics to output file
         self._fileWriteStats(
